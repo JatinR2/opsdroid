@@ -30,7 +30,6 @@ CONFIG_SCHEMA = {
     "reply-unauthorized": bool,
 }
 
-
 class ConnectorTelegram(Connector):
     """A connector for the chat service Telegram."""
 
@@ -451,6 +450,59 @@ class ConnectorTelegram(Connector):
                 _LOGGER.debug(_("Sent %s file successfully."), file_event.name)
             else:
                 _LOGGER.debug(_("Unable to send file - Status Code %s."), resp.status)
+
+    async def get_updates(self):
+        """Get updates from Telegram API.
+
+        This method temporarily deletes the webhook, gets updates,
+        and then sets up the webhook again.
+
+        Returns:
+            The updates from the Telegram API or None if an error occurs.
+        """
+        _LOGGER.debug(_("Getting updates from Telegram API..."))
+        updates = None
+
+        async with aiohttp.ClientSession() as session:
+            # First delete webhook
+            resp = await session.get(self.build_url("deleteWebhook"))
+            if resp.status != 200:
+                _LOGGER.error(_("Unable to delete webhook to get updates."))
+                return None
+
+            # Get updates
+            resp = await session.get(self.build_url("getUpdates"))
+            if resp.status != 200:
+                _LOGGER.error(_("Failed to get updates from Telegram."))
+            else:
+                updates = await resp.json()
+                _LOGGER.debug(_("Successfully retrieved updates from Telegram."))
+
+            # Set up webhook again
+            if self.base_url:
+                payload = {
+                    "url": f"{self.base_url}{self.webhook_endpoint}",
+                    "allowed_updates": [
+                        "messages",
+                        "edited_message",
+                        "channel_post",
+                        "edited_channel_post",
+                        "update_id",
+                    ],
+                }
+
+                resp = await session.post(
+                    self.build_url("setWebhook"), params=payload
+                )
+
+                if resp.status >= 400:
+                    _LOGGER.error(
+                        _("Error when reconnecting to Telegram Webhook: - %s - %s"),
+                        resp.status,
+                        resp.text,
+                    )
+
+            return updates
 
     async def disconnect(self):
         """Delete active webhook.
