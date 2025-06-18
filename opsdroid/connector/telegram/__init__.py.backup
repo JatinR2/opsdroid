@@ -182,34 +182,11 @@ class ConnectorTelegram(Connector):
                     self.build_url("setWebhook"), params=payload
                 )
 
-                if response.status == 409:
-                    # Conflict error - webhook might already be active
-                    error_text = await response.text()
-                    if "webhook is already set" in error_text.lower():
-                        _LOGGER.warning(_("Webhook is already set. Attempting to update..."))
-                        # Try to delete existing webhook first
-                        delete_resp = await session.get(self.build_url("deleteWebhook"))
-                        if delete_resp.status == 200:
-                            # Retry setting webhook
-                            response = await session.post(
-                                self.build_url("setWebhook"), params=payload
-                            )
-                            if response.status == 200:
-                                _LOGGER.info(_("Webhook set successfully after conflict resolution."))
-                            else:
-                                _LOGGER.error(
-                                    _("Failed to set webhook after conflict resolution: %s"),
-                                    response.status
-                                )
-                        else:
-                            _LOGGER.error(_("Failed to delete existing webhook: %s"), delete_resp.status)
-                    else:
-                        _LOGGER.error(_("Webhook conflict error: %s"), error_text)
-                elif response.status >= 400:
+                if response.status >= 400:
                     _LOGGER.error(
                         _("Error when connecting to Telegram Webhook: - %s - %s"),
                         response.status,
-                        await response.text(),
+                        response.text,
                     )
 
     async def telegram_webhook_handler(self, request):
@@ -475,123 +452,6 @@ class ConnectorTelegram(Connector):
             else:
                 _LOGGER.debug(_("Unable to send file - Status Code %s."), resp.status)
 
-    async def ensure_webhook_deleted(self):
-        """Ensure webhook is deleted before using polling methods.
-
-        This method ensures that any active webhook is deleted before
-        attempting to use polling-based methods like getUpdates. This prevents
-        the 'Conflict: can't use getUpdates method while webhook is active' error.
-
-        Returns:
-            bool: True if webhook was successfully deleted or wasn't active, False otherwise.
-        """
-        _LOGGER.debug(_("Ensuring webhook is deleted before polling..."))
-        async with aiohttp.ClientSession() as session:
-            resp = await session.get(self.build_url("deleteWebhook"))
-
-            if resp.status == 200:
-                _LOGGER.debug(_("Webhook deletion request sent successfully."))
-                return True
-            else:
-                _LOGGER.error(_("Failed to delete webhook. Status: %s"), resp.status)
-                return False
-    async def get_chat_info(self, chat_id):
-        """Get chat information safely.
-
-        This method can be used to get chat information without causing
-        webhook conflicts. It doesn't use getUpdates, so it's safe to use
-        with active webhooks.
-
-        Args:
-            chat_id (str or int): The chat ID to get information for.
-
-        Returns:
-            dict or None: Chat information if successful, None otherwise.
-        """
-        _LOGGER.debug(_("Getting chat info for chat ID: %s"), chat_id)
-        
-        data = {"chat_id": chat_id}
-        
-        async with aiohttp.ClientSession() as session:
-            resp = await session.post(self.build_url("getChat"), data=data)
-            
-            if resp.status == 200:
-                chat_info = await resp.json()
-                _LOGGER.debug(_("Successfully retrieved chat info."))
-                return chat_info
-            else:
-                _LOGGER.error(_("Failed to get chat info. Status: %s"), resp.status)
-                return None
-    async def safe_api_call(self, method, params=None, data=None):
-        """Make a safe API call to Telegram.
-
-        This method provides a safe way to make API calls to Telegram
-        while handling potential webhook conflicts. It specifically handles
-        the case where getUpdates might conflict with active webhooks.
-
-        Args:
-            method (str): The Telegram API method to call.
-            params (dict, optional): URL parameters for the API call.
-            data (dict, optional): Data to send with the API call.
-
-        Returns:
-            dict or None: API response if successful, None otherwise.
-        """
-        # If trying to use getUpdates, ensure webhook is deleted first
-        if method == "getUpdates":
-            _LOGGER.warning(
-                _("getUpdates method called while webhook may be active. ")
-                + _("Attempting to delete webhook first to prevent conflicts.")
-            )
-            webhook_deleted = await self.ensure_webhook_deleted()
-            if not webhook_deleted:
-                _LOGGER.error(_("Cannot use getUpdates: failed to delete webhook."))
-                return None
-n        async with aiohttp.ClientSession() as session:
-            if data:
-                resp = await session.post(self.build_url(method), data=data)
-            else:
-                resp = await session.get(self.build_url(method), params=params)
-
-            if resp.status == 200:
-                try:
-                    return await resp.json()
-                except Exception as e:
-                    _LOGGER.error(_("Failed to parse API response: %s"), e)
-                    return None
-            elif resp.status == 409:  # Conflict error
-                error_text = await resp.text()
-                if "can't use getUpdates method while webhook is active" in error_text:
-                    _LOGGER.error(
-                        _("Webhook conflict detected. Attempting to resolve...")
-                    )
-                    # Try to delete webhook and retry once
-                    webhook_deleted = await self.ensure_webhook_deleted()
-                    if webhook_deleted:
-                        _LOGGER.info(_("Retrying API call after webhook deletion..."))
-                        if data:
-                            resp = await session.post(self.build_url(method), data=data)
-                        else:
-                            resp = await session.get(self.build_url(method), params=params)
-                        
-                        if resp.status == 200:
-                            try:
-                                return await resp.json()
-                            except Exception as e:
-                                _LOGGER.error(_("Failed to parse retry response: %s"), e)
-                                return None
-                        else:
-                            _LOGGER.error(_("Retry failed with status: %s"), resp.status)
-                            return None
-                    else:
-                        _LOGGER.error(_("Could not resolve webhook conflict."))
-                        return None
-                else:
-                    _LOGGER.error(_("API call failed with conflict: %s"), error_text)
-                    return None
-            else:
-                _LOGGER.error(_("API call failed with status: %s"), resp.status)
-                return None
     async def disconnect(self):
         """Delete active webhook.
 
