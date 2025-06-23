@@ -68,7 +68,7 @@ class DatabaseSqlite(Database):
 
         cur = await self.client.cursor()
         await cur.execute(
-            "CREATE TABLE IF NOT EXISTS {}"
+            "CREATE TABLE IF NOT EXISTS [{}]"
             "(key text PRIMARY KEY, data text)".format(self.table)
         )
         await self.client.commit()
@@ -91,9 +91,9 @@ class DatabaseSqlite(Database):
         json_data = json.dumps(data, cls=JSONEncoder)
 
         cur = await self.client.cursor()
-        await cur.execute("DELETE FROM {} WHERE key=?".format(self.table), (key,))
+        await cur.execute("DELETE FROM [{}] WHERE key=?".format(self.table), (key,))
         await cur.execute(
-            "INSERT INTO {} VALUES (?, ?)".format(self.table), (key, json_data)
+            "INSERT INTO [{}] VALUES (?, ?)".format(self.table), (key, json_data)
         )
         await self.client.commit()
 
@@ -112,7 +112,7 @@ class DatabaseSqlite(Database):
         data = None
 
         cur = await self.client.cursor()
-        await cur.execute("SELECT data FROM {} WHERE key=?".format(self.table), (key,))
+        await cur.execute("SELECT data FROM [{}] WHERE key=?".format(self.table), (key,))
         row = await cur.fetchone()
         if row:
             data = json.loads(row[0], object_hook=JSONDecoder())
@@ -129,7 +129,7 @@ class DatabaseSqlite(Database):
         _LOGGER.debug(_("Deleting %s from sqlite"), key)
 
         cur = await self.client.cursor()
-        await cur.execute("DELETE FROM {} WHERE key=?".format(self.table), (key,))
+        await cur.execute("DELETE FROM [{}] WHERE key=?".format(self.table), (key,))
         await self.client.commit()
 
     async def disconnect(self):
