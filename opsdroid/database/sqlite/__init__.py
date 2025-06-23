@@ -3,6 +3,7 @@ import os
 import logging
 import json
 import aiosqlite
+import re
 
 from opsdroid.const import DEFAULT_ROOT_PATH
 from opsdroid.database import Database

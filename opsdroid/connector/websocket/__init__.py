@@ -97,7 +97,7 @@ class ConnectorWebsocket(Connector):
             < self.max_connections
             and self.accepting_connections
         ):
-            socket = {"id": str(uuid.uuid1()), "date": datetime.now()}
+            socket = {"id": str(uuid.uuid4()), "date": datetime.now()}
             self.available_connections.append(socket)
             return aiohttp.web.Response(
                 text=json.dumps({"socket": socket["id"]}), headers=HEADERS, status=200
