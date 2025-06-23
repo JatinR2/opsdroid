@@ -61,7 +61,7 @@ class ConnectorTwitch(Connector):
         self.user_id = None
         self.webhook_secret = secrets.token_urlsafe(18)
         # TODO: Allow usage of SSL connection
-        self.server = "ws://irc-ws.chat.twitch.tv"
+        self.server = "wss://irc-ws.chat.twitch.tv"
         self.port = "80"
         self.loop = asyncio.get_event_loop()
         self.reconnections = 0
