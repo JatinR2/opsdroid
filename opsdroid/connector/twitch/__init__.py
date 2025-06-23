@@ -61,7 +61,7 @@ class ConnectorTwitch(Connector):
         self.user_id = None
         self.webhook_secret = secrets.token_urlsafe(18)
         # TODO: Allow usage of SSL connection
-        self.server = "ws://irc-ws.chat.twitch.tv"
+        self.server = "wss://irc-ws.chat.twitch.tv"
         self.port = "80"
         self.loop = asyncio.get_event_loop()
         self.reconnections = 0
@@ -197,7 +197,7 @@ class ConnectorTwitch(Connector):
                 self.token = data["access_token"]
                 self.save_authentication_data(data)
             except KeyError:
-                _LOGGER.warning(_("Unable to request oauth token - %s"), data)
+                _LOGGER.warning(_("Unable to request oauth token - response does not contain access_token"))
 
     async def refresh_token(self):
         """Attempt to refresh the oauth token.

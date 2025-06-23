@@ -79,7 +79,7 @@ class ConnectorMattermost(Connector):
 
         body = await login_response.json()
         _LOGGER.info(
-            _("Mattermost responded with the identity of the token's user: '%s'"),
+            _("Mattermost login response received."),
             repr(body),
         )
 
