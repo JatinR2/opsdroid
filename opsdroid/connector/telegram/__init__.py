@@ -452,6 +452,105 @@ class ConnectorTelegram(Connector):
             else:
                 _LOGGER.debug(_("Unable to send file - Status Code %s."), resp.status)
 
+    async def get_chat_id(self, limit=10):
+        """Get chat IDs from recent updates.
+
+        This method temporarily removes the webhook, retrieves recent updates
+        using getUpdates to extract chat IDs, and then restores the webhook.
+        This is necessary because Telegram doesn't allow using getUpdates while
+        a webhook is active.
+
+        Args:
+            limit (int): Maximum number of updates to retrieve (default: 10)
+
+        Returns:
+            list: List of unique chat IDs found in recent updates
+
+        """
+        chat_ids = set()
+        webhook_restored = False
+        
+        try:
+            # Step 1: Delete the active webhook
+            _LOGGER.debug(_("Temporarily deleting webhook to retrieve chat IDs..."))
+            async with aiohttp.ClientSession() as session:
+                resp = await session.get(self.build_url("deleteWebhook"))
+                if resp.status != 200:
+                    _LOGGER.warning(_("Failed to delete webhook, status: %s"), resp.status)
+                    return []
+                    
+            # Step 2: Get updates using getUpdates
+            _LOGGER.debug(_("Retrieving updates to extract chat IDs..."))
+            async with aiohttp.ClientSession() as session:
+                params = {"limit": limit, "timeout": 5}
+                resp = await session.get(self.build_url("getUpdates"), params=params)
+                
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok") and data.get("result"):
+                        for update in data["result"]:
+                            # Extract chat ID from different types of updates
+                            chat_id = None
+                            
+                            if "message" in update:
+                                chat_id = update["message"]["chat"]["id"]
+                            elif "edited_message" in update:
+                                chat_id = update["edited_message"]["chat"]["id"]
+                            elif "channel_post" in update:
+                                chat_id = update["channel_post"]["chat"]["id"]
+                            elif "edited_channel_post" in update:
+                                chat_id = update["edited_channel_post"]["chat"]["id"]
+                                
+                            if chat_id:
+                                chat_ids.add(chat_id)
+                                
+                        _LOGGER.debug(_("Found %d unique chat IDs"), len(chat_ids))
+                    else:
+                        _LOGGER.debug(_("No updates found or API returned error"))
+                else:
+                    _LOGGER.warning(_("Failed to get updates, status: %s"), resp.status)
+                    
+        except Exception as e:
+            _LOGGER.error(_("Error while retrieving chat IDs: %s"), str(e))
+        finally:
+            # Step 3: Restore the webhook
+            if self.base_url:
+                try:
+                    _LOGGER.debug(_("Restoring webhook..."))
+                    payload = {
+                        "url": f"{self.base_url}{self.webhook_endpoint}",
+                        "allowed_updates": [
+                            "messages",
+                            "edited_message",
+                            "channel_post",
+                            "edited_channel_post",
+                            "update_id",
+                        ],
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        resp = await session.post(
+                            self.build_url("setWebhook"), params=payload
+                        )
+                        
+                        if resp.status >= 400:
+                            _LOGGER.error(
+                                _("Error when restoring Telegram webhook: - %s - %s"),
+                                resp.status,
+                                await resp.text(),
+                            )
+                        else:
+                            webhook_restored = True
+                            _LOGGER.debug(_("Webhook restored successfully"))
+                            
+                except Exception as e:
+                    _LOGGER.error(_("Failed to restore webhook: %s"), str(e))
+                    
+            if not webhook_restored:
+                _LOGGER.warning(_("Webhook may not have been properly restored"))
+                
+        return list(chat_ids)
+
     async def disconnect(self):
         """Delete active webhook.
 
